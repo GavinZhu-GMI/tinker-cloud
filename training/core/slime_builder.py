@@ -115,6 +115,9 @@ class SlimeArgumentBuilder:
             rlve_config=rlve_config
         )
 
+        # Add LoRA CLI args if configured
+        minimal_args = self._add_lora_cli_args(minimal_args, lora_config)
+
         # Parse args to get Slime defaults
         args = self._parse_slime_args(minimal_args)
 
@@ -271,6 +274,50 @@ class SlimeArgumentBuilder:
 
         return minimal_args
 
+    def _add_lora_cli_args(self, minimal_args: list, lora_config: Dict[str, Any]) -> list:
+        """Add LoRA CLI arguments if LoRA is enabled.
+
+        Args:
+            minimal_args: The CLI args list to extend
+            lora_config: LoRA configuration dict with rank, alpha, dropout
+
+        Returns:
+            The updated minimal_args list
+        """
+        if not lora_config or lora_config.get("rank", 0) == 0:
+            return minimal_args
+
+        lora_rank = lora_config.get("rank", 0)
+        # Default alpha to rank for scaling factor of 1.0
+        # Handle both missing key and explicit None
+        lora_alpha = lora_config.get("alpha")
+        if lora_alpha is None or lora_alpha == 0:
+            lora_alpha = lora_rank
+        lora_dropout = lora_config.get("dropout", 0.0)
+
+        # Use local transformer implementation for LoRA
+        # (TE layers not supported by current LoRA injector)
+        minimal_args.extend(['--transformer-impl', 'local'])
+
+        minimal_args.extend([
+            '--lora-rank', str(lora_rank),
+            '--lora-alpha', str(lora_alpha),
+            '--lora-dropout', str(lora_dropout),
+        ])
+
+        # Add LoRA checkpoint path if provided
+        lora_checkpoint = lora_config.get("checkpoint")
+        if lora_checkpoint:
+            minimal_args.extend(['--lora-checkpoint', lora_checkpoint])
+
+        # Add SGLang LoRA adapter path if provided (for runtime adapter loading)
+        sglang_adapter_path = lora_config.get("sglang_adapter_path")
+        if sglang_adapter_path:
+            minimal_args.extend(['--sglang-lora-adapter-path', sglang_adapter_path])
+
+        logger.info(f"LoRA CLI args: rank={lora_rank}, alpha={lora_alpha}, dropout={lora_dropout}")
+        return minimal_args
+
     def _parse_slime_args(self, minimal_args: list) -> Namespace:
         """Parse Slime arguments using Slime's parse_args."""
         original_argv = sys.argv
@@ -321,7 +368,9 @@ class SlimeArgumentBuilder:
         # Note: lora_alpha defaults to lora_rank (scaling factor of 1.0) if not specified
         # This is critical - if alpha=0, all LoRA gradients are scaled to zero!
         args.lora_rank = lora_config.get("rank", 0) if lora_config else 0
-        args.lora_alpha = lora_config.get("alpha", args.lora_rank) if lora_config else 0
+        # Handle both missing key and explicit None/0 for alpha
+        lora_alpha_raw = lora_config.get("alpha") if lora_config else None
+        args.lora_alpha = lora_alpha_raw if (lora_alpha_raw is not None and lora_alpha_raw != 0) else args.lora_rank
         args.lora_dropout = lora_config.get("dropout", 0.0) if lora_config else 0.0
         logger.info(f"LoRA config: rank={args.lora_rank}, alpha={args.lora_alpha}, dropout={args.lora_dropout}")
 

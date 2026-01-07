@@ -13,7 +13,7 @@ class LoraConfig(BaseModel):
     """LoRA (Low-Rank Adaptation) configuration."""
 
     rank: int = Field(default=0, ge=0, description="LoRA rank (0 = no LoRA)")
-    alpha: int = Field(default=0, ge=0, description="LoRA alpha parameter")
+    alpha: Optional[int] = Field(default=None, ge=0, description="LoRA alpha parameter (defaults to rank if not specified)")
     dropout: float = Field(default=0.0, ge=0.0, le=1.0, description="LoRA dropout rate")
     seed: Optional[int] = Field(default=None, description="Random seed for LoRA")
     train_unembed: bool = Field(default=True, description="Train unembedding layer")
