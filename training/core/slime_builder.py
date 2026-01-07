@@ -318,9 +318,12 @@ class SlimeArgumentBuilder:
             args.load = parse_checkpoint_uri(checkpoint_path, args.save)
 
         # LoRA configuration
+        # Note: lora_alpha defaults to lora_rank (scaling factor of 1.0) if not specified
+        # This is critical - if alpha=0, all LoRA gradients are scaled to zero!
         args.lora_rank = lora_config.get("rank", 0) if lora_config else 0
-        args.lora_alpha = lora_config.get("alpha", 0) if lora_config else 0
+        args.lora_alpha = lora_config.get("alpha", args.lora_rank) if lora_config else 0
         args.lora_dropout = lora_config.get("dropout", 0.0) if lora_config else 0.0
+        logger.info(f"LoRA config: rank={args.lora_rank}, alpha={args.lora_alpha}, dropout={args.lora_dropout}")
 
         # Parallelism settings - use values from parallel_config (already auto-detected in build_args)
         tp_size = parallel_config.get('tensor_parallel_size', 2)
