@@ -474,11 +474,24 @@ class TinkerDataConverter:
             response_lengths_list = [int(length) for length in rollout_data.get("response_lengths", [])]
 
         # Miles returns one result per (data-parallel, pipeline) shard.
-        # Only the pipeline-last shard includes log_probs, and it nests them
-        # under result["loss"]["log_probs"] as a list of per-sample tensors.
+        # Only the pipeline-last shard at TP-rank-0 includes log_probs.
+        # Find the FIRST result with log_probs to avoid DP duplication.
+        result_with_logprobs = None
+        for result in results:
+            loss_dict = result.get("loss") or {}
+            if isinstance(loss_dict, dict) and loss_dict.get("log_probs"):
+                result_with_logprobs = result
+                break
+
+        if result_with_logprobs is None:
+            # Fallback: try legacy format or first result
+            result_with_logprobs = results[0] if results else {}
+
+        # Process only the single result with logprobs (avoid DP duplication)
+        results_to_process = [result_with_logprobs]
         sample_index = 0
 
-        for result in results:
+        for result in results_to_process:
             loss_dict = result.get("loss") or {}
             raw_logprobs = []
             loss_value = 0.0
